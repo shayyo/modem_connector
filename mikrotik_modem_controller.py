@@ -1,7 +1,7 @@
 import paramiko
 import _thread
 import time
-
+#
 
 class MikrotikModemController:
     lte_int_info_cmd = 'gsmctl -ZWM;gsmctl -O 1-1.2 -ZWM'
