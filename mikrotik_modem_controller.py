@@ -4,7 +4,8 @@ import time
 
 
 class MikrotikModemController:
-    lte_int_info_cmd = 'uci show wireless'
+    lte_int_info_cmd = 'gsmctl -ZWM;gsmctl -O 1-1.2 -ZWM'
+
 
     def __init__(self, ip, port=22, interface_id=0, username='admin', password=''):
         self.ip = ip
