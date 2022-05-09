@@ -5,10 +5,11 @@ import json
 
 
 class OpenWRTModemController:
-    get_data_status_cmd = 'uqmi -d /dev/cdc-wdm1 --get-data-status'
-    get_signal_info_cmd = 'uqmi -d /dev/cdc-wdm1 --get-signal-info --single'
+    get_data_status_cmd = 'uqmi -d /dev/cdc-wdm%d --get-data-status'
+    get_signal_info_cmd = 'uqmi -d /dev/cdc-wdm%d --get-signal-info --single'
 
-    def __init__(self, ip, port=22, username='admin', password=''):
+    def __init__(self, modem_no, ip, port=22, username='admin', password=''):
+        self.modem_no = modem_no
         self.ip = ip
         self.port = port
         self.username = username
@@ -27,17 +28,17 @@ class OpenWRTModemController:
         self.ssh.connect(self.ip, self.port, self.username, self.password)
 
         try:
-            _thread.start_new_thread(self.fetch_modem_stat, ("Thread-1", 2,))
+            _thread.start_new_thread(self.fetch_modem_stat, ('fetch-modem%d-stat-thread' % self.modem_no, 2,))
         except:
             print("Error: unable to start thread")
 
     def fetch_modem_stat(self, threadName, delay):
         while True:
-            stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_data_status_cmd)
+            stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_data_status_cmd % self.modem_no)
             gg = stdout.readline().strip().replace('"', '')
             if gg == "connected":
                 self.connected = True
-                stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_signal_info_cmd)
+                stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_signal_info_cmd % self.modem_no)
                 signal_info = json.loads(stdout.readline())
                 self.type = signal_info["type"]
                 self.rssi = signal_info["rssi"]
@@ -54,19 +55,12 @@ class OpenWRTModemController:
             time.sleep(1)
 
     def print_modem_stat(self):
-        if self.connected == True:
-            print(f'type={modem_controller.type}\n'
-                  f'rssi={modem_controller.rssi}\n'
-                  f'rsrq={modem_controller.rsrq}\n'
-                  f'rsrp={modem_controller.rsrp}\n'
-                  f'snr={modem_controller.snr}\n')
+        print(f'******* MODEM%d *******' % self.modem_no)
+        if self.connected:
+            print(f'type={self.type}\n'
+                  f'rssi={self.rssi}\n'
+                  f'rsrq={self.rsrq}\n'
+                  f'rsrp={self.rsrp}\n'
+                  f'snr={self.snr}\n')
         else:
             print("disconnected")
-
-
-if __name__ == "__main__":
-    modem_controller = OpenWRTModemController('192.168.1.1', username='root', password='@Password1')
-    modem_controller.start()
-    while True:
-        modem_controller.print_modem_stat()
-        time.sleep(1)
