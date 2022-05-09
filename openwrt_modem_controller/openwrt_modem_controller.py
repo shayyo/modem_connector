@@ -7,60 +7,65 @@ import json
 class OpenWRTModemController:
     get_data_status_cmd = 'uqmi -d /dev/cdc-wdm%d --get-data-status'
     get_signal_info_cmd = 'uqmi -d /dev/cdc-wdm%d --get-signal-info --single'
+    get_operator_cmd = "gsmctl -O %s --operator"
 
-    def __init__(self, modem_no, ip, port=22, username='admin', password=''):
-        self.modem_no = modem_no
-        self.ip = ip
-        self.port = port
-        self.username = username
-        self.password = password
-        self.ssh = None
-        self.type = None
+    def __init__(self, modem_no, usb_modem_id, ip, port=22, username='admin', password='', modem_state_callback=None):
+        self.__modem_no = modem_no
+        self.__usb_modem_id = usb_modem_id
+        self.__ip = ip
+        self.__port = port
+        self.__username = username
+        self.__password = password
+        self.__modem_state_callback = modem_state_callback
+        self.__ssh = None
+        self.connected = False
+        self.conn_type = None
         self.rssi = None
         self.rsrq = None
         self.rsrp = None
         self.snr = None
-        self.connected = False
+        self.operator = None
 
-    def start(self):
-        self.ssh = paramiko.SSHClient()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(self.ip, self.port, self.username, self.password)
+    def connect(self):
+        self.__ssh = paramiko.SSHClient()
+        self.__ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            self.__ssh.connect(self.__ip, self.__port, self.__username, self.__password)
+        except:
+            raise Exception("connect")
 
         try:
-            _thread.start_new_thread(self.fetch_modem_stat, ('fetch-modem%d-stat-thread' % self.modem_no, 2,))
+            _thread.start_new_thread(self.__fetch_modem_stat, ('fetch-modem%d-stat-thread' % self.__modem_no, 2,))
         except:
-            print("Error: unable to start thread")
+            raise Exception("new_thread")
 
-    def fetch_modem_stat(self, threadName, delay):
+    def __fetch_modem_stat(self, threadName, delay):
         while True:
-            stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_data_status_cmd % self.modem_no)
-            gg = stdout.readline().strip().replace('"', '')
-            if gg == "connected":
-                self.connected = True
-                stdin, stdout, stderr = self.ssh.exec_command(OpenWRTModemController.get_signal_info_cmd % self.modem_no)
+            # exec get data status cmd
+            stdin, stdout, stderr = self.__ssh.exec_command(self.get_data_status_cmd % self.__modem_no)
+            if stdout.readline().strip().replace('"', '') == "connected":
+                # exec get signal info cmd
+                stdin, stdout, stderr = self.__ssh.exec_command(self.get_signal_info_cmd % self.__modem_no)
                 signal_info = json.loads(stdout.readline())
-                self.type = signal_info["type"]
+                self.conn_type = signal_info["type"]
                 self.rssi = signal_info["rssi"]
                 self.rsrq = signal_info["rsrq"]
                 self.rsrp = signal_info["rsrp"]
                 self.snr = signal_info["snr"]
+                # exec get operator cmd
+                stdin, stdout, stderr = self.__ssh.exec_command(self.get_operator_cmd % self.__usb_modem_id)
+                self.operator = stdout.readline().strip()
+                if not self.connected and self.__modem_state_callback is not None:
+                    self.__modem_state_callback(self.__modem_no, True)
+                self.connected = True
             else:
-                self.connected = False
-                self.type = None
+                self.conn_type = None
                 self.rssi = None
                 self.rsrq = None
                 self.rsrp = None
                 self.snr = None
-            time.sleep(1)
-
-    def print_modem_stat(self):
-        print(f'******* MODEM%d *******' % self.modem_no)
-        if self.connected:
-            print(f'type={self.type}\n'
-                  f'rssi={self.rssi}\n'
-                  f'rsrq={self.rsrq}\n'
-                  f'rsrp={self.rsrp}\n'
-                  f'snr={self.snr}\n')
-        else:
-            print("disconnected")
+                self.operator = None
+                if self.connected and self.__modem_state_callback is not None:
+                    self.__modem_state_callback(self.__modem_no, True)
+                self.connected = False
+            time.sleep(5)
